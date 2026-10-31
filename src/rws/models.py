@@ -47,7 +47,7 @@ class Flow(Base):
     __tablename__ = "flows"
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
-    owner_id: Mapped[str] = mapped_column(String(255), index=True)
+    owner_id: Mapped[str] = mapped_column(String(255))
     name: Mapped[str] = mapped_column(String(200))
     description: Mapped[str] = mapped_column(Text, default="")
     definition: Mapped[dict[str, Any]] = mapped_column(JSON)
