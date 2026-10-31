@@ -44,7 +44,11 @@ def start_run(
     principal: CanStartRuns,
     idempotency_key: Annotated[
         str | None,
-        Header(max_length=255, description="Makes retries safe: same key = same run"),
+        Header(
+            alias="Idempotency-Key",
+            max_length=255,
+            description="Makes retries safe: same key = same run",
+        ),
     ] = None,
 ) -> Run:
     """Start a run asynchronously. Returns 202 at once; poll ``GET /runs/{id}``."""

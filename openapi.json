@@ -241,7 +241,7 @@
             }
           },
           {
-            "name": "idempotency-key",
+            "name": "Idempotency-Key",
             "in": "header",
             "required": false,
             "schema": {

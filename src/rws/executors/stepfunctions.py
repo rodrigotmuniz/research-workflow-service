@@ -42,8 +42,9 @@ class StepFunctionsExecutor:
     def start(self, request: RunRequest) -> StartResult:
         sm_arn = request.state_machine_arn or self._ensure_state_machine(request)
         try:
-            # The execution name is the run id. Step Functions refuses a second
-            # execution with the same name, which gives us idempotent starts for free.
+            # The execution name is the run id, so a repeated start cannot create a
+            # second execution: AWS returns the running one (same name + input) or
+            # raises ExecutionAlreadyExists (e.g. it already finished).
             resp = self._sfn.start_execution(
                 stateMachineArn=sm_arn,
                 name=str(request.run_id),

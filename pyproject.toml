@@ -70,6 +70,7 @@ ignore_missing_imports = true
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q --strict-markers"
+filterwarnings = ["ignore:Using `httpx` with `starlette.testclient`"]
 
 [tool.coverage.run]
 source = ["rws"]
