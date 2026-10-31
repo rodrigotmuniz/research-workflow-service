@@ -1,0 +1,39 @@
+{
+  "name": "archive-dataset",
+  "description": "Validate a dataset, write a checksum manifest, copy it to the archive bucket and notify.",
+  "definition": {
+    "steps": [
+      {
+        "id": "validate",
+        "action": "validate_dataset",
+        "params": {
+          "bucket": "$.input.bucket",
+          "prefix": "$.input.prefix",
+          "min_objects": 1,
+          "allowed_extensions": [".csv", ".json", ".txt"]
+        }
+      },
+      {
+        "id": "checksums",
+        "action": "compute_checksums",
+        "params": {"bucket": "$.input.bucket", "prefix": "$.input.prefix", "algorithm": "sha256"}
+      },
+      {
+        "id": "archive",
+        "action": "copy_objects",
+        "params": {
+          "source_bucket": "$.input.bucket",
+          "source_prefix": "$.input.prefix",
+          "dest_bucket": "$.input.archive_bucket",
+          "dest_prefix": "$.input.archive_prefix"
+        },
+        "retry": {"max_attempts": 5, "interval_seconds": 2, "backoff_rate": 2.0}
+      },
+      {
+        "id": "notify",
+        "action": "notify",
+        "params": {"message": "Run {run_id}: dataset archived"}
+      }
+    ]
+  }
+}

@@ -74,3 +74,29 @@ def compile_to_asl(
         states[step.id] = state
 
     return {"Comment": comment, "StartAt": steps[0].id, "States": states}
+
+
+# Placeholders filled by CloudFormation/SAM ``DefinitionSubstitutions``.
+TEMPLATE_ARNS = {
+    "validate_dataset": "${ValidateDatasetFunctionArn}",
+    "compute_checksums": "${ComputeChecksumsFunctionArn}",
+    "copy_objects": "${CopyObjectsFunctionArn}",
+    "notify": "${NotifyFunctionArn}",
+}
+
+
+def main(argv: list[str] | None = None) -> None:
+    """Print the ASL for a flow file: ``python -m rws.asl examples/archive-dataset.flow.json``."""
+    import json
+    import sys
+    from pathlib import Path
+
+    path = Path((argv or sys.argv[1:])[0])
+    flow = json.loads(path.read_text())
+    definition = FlowDefinition.model_validate(flow["definition"])
+    asl = compile_to_asl(definition, TEMPLATE_ARNS, comment=flow.get("description", ""))
+    sys.stdout.write(json.dumps(asl, indent=2) + "\n")
+
+
+if __name__ == "__main__":
+    main()

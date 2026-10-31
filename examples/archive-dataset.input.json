@@ -1,0 +1,6 @@
+{
+  "bucket": "rws-data",
+  "prefix": "datasets/demo/",
+  "archive_bucket": "rws-archive",
+  "archive_prefix": "archive/demo"
+}

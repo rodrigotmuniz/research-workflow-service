@@ -1,0 +1,258 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  Research Workflow Service - API on ECS Fargate, task Lambdas, Step Functions,
+  S3 buckets and least-privilege IAM roles. Reference template (not deployed by CI).
+
+Parameters:
+  ApiImageUri:
+    Type: String
+    Description: ECR image URI for the API container.
+  DatabaseUrlSecretArn:
+    Type: String
+    Description: Secrets Manager secret holding the SQLAlchemy database URL.
+  OidcIssuer:
+    Type: String
+  OidcAudience:
+    Type: String
+    Default: research-workflow-service
+  OidcJwksUrl:
+    Type: String
+  SubnetIds:
+    Type: List<AWS::EC2::Subnet::Id>
+  SecurityGroupIds:
+    Type: List<AWS::EC2::SecurityGroup::Id>
+
+Globals:
+  Function:
+    Runtime: python3.12
+    CodeUri: ../src
+    Timeout: 300
+    MemorySize: 512
+    Architectures: [arm64]
+    Tracing: Active
+
+Resources:
+  # ---------------------------------------------------------------- storage
+  DataBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault: { SSEAlgorithm: aws:kms }
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+
+  ArchiveBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      VersioningConfiguration: { Status: Enabled }
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault: { SSEAlgorithm: aws:kms }
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+
+  # ---------------------------------------------------------------- task Lambdas
+  # One function per action so each gets only the permissions it needs.
+  ValidateDatasetFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: rws.tasks.handlers.validate_dataset_handler
+      Policies:
+        - S3ReadPolicy: { BucketName: !Ref DataBucket }
+
+  ComputeChecksumsFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: rws.tasks.handlers.compute_checksums_handler
+      Policies:
+        - S3CrudPolicy: { BucketName: !Ref DataBucket }
+
+  CopyObjectsFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: rws.tasks.handlers.copy_objects_handler
+      Policies:
+        - S3ReadPolicy: { BucketName: !Ref DataBucket }
+        - S3WritePolicy: { BucketName: !Ref ArchiveBucket }
+
+  NotifyFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: rws.tasks.handlers.notify_handler
+      Timeout: 30
+
+  # ---------------------------------------------------------------- Step Functions
+  StepFunctionsRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: { Service: states.amazonaws.com }
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: invoke-task-functions
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: lambda:InvokeFunction
+                Resource:
+                  - !GetAtt ValidateDatasetFunction.Arn
+                  - !GetAtt ComputeChecksumsFunction.Arn
+                  - !GetAtt CopyObjectsFunction.Arn
+                  - !GetAtt NotifyFunction.Arn
+
+  # The API creates one state machine per flow at runtime. This one is the
+  # example flow, compiled by `python -m rws.asl examples/archive-dataset.flow.json`.
+  ArchiveDatasetStateMachine:
+    Type: AWS::Serverless::StateMachine
+    Properties:
+      Type: STANDARD
+      Role: !GetAtt StepFunctionsRole.Arn
+      DefinitionUri: statemachines/archive-dataset.asl.json
+      DefinitionSubstitutions:
+        ValidateDatasetFunctionArn: !GetAtt ValidateDatasetFunction.Arn
+        ComputeChecksumsFunctionArn: !GetAtt ComputeChecksumsFunction.Arn
+        CopyObjectsFunctionArn: !GetAtt CopyObjectsFunction.Arn
+        NotifyFunctionArn: !GetAtt NotifyFunction.Arn
+
+  # ---------------------------------------------------------------- API on ECS Fargate
+  ApiTaskRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: { Service: ecs-tasks.amazonaws.com }
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: run-flows
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - states:CreateStateMachine
+                  - states:StartExecution
+                  - states:TagResource
+                Resource: !Sub arn:${AWS::Partition}:states:${AWS::Region}:${AWS::AccountId}:stateMachine:rws-flow-*
+              - Effect: Allow
+                Action:
+                  - states:DescribeExecution
+                  - states:StopExecution
+                Resource: !Sub arn:${AWS::Partition}:states:${AWS::Region}:${AWS::AccountId}:execution:rws-flow-*:*
+              - Effect: Allow
+                Action: iam:PassRole
+                Resource: !GetAtt StepFunctionsRole.Arn
+
+  ApiExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: { Service: ecs-tasks.amazonaws.com }
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - !Sub arn:${AWS::Partition}:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
+      Policies:
+        - PolicyName: read-database-secret
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: secretsmanager:GetSecretValue
+                Resource: !Ref DatabaseUrlSecretArn
+
+  ApiLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      RetentionInDays: 30
+
+  Cluster:
+    Type: AWS::ECS::Cluster
+
+  ApiTaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      RequiresCompatibilities: [FARGATE]
+      NetworkMode: awsvpc
+      Cpu: "512"
+      Memory: "1024"
+      RuntimePlatform: { CpuArchitecture: ARM64, OperatingSystemFamily: LINUX }
+      TaskRoleArn: !GetAtt ApiTaskRole.Arn
+      ExecutionRoleArn: !GetAtt ApiExecutionRole.Arn
+      ContainerDefinitions:
+        - Name: api
+          Image: !Ref ApiImageUri
+          Essential: true
+          PortMappings:
+            - ContainerPort: 8000
+          Environment:
+            - { Name: RWS_EXECUTOR, Value: stepfunctions }
+            - { Name: RWS_AUTH_MODE, Value: jwks }
+            - { Name: RWS_AUTH_ISSUER, Value: !Ref OidcIssuer }
+            - { Name: RWS_AUTH_AUDIENCE, Value: !Ref OidcAudience }
+            - { Name: RWS_AUTH_JWKS_URL, Value: !Ref OidcJwksUrl }
+            - { Name: RWS_AWS_REGION, Value: !Ref AWS::Region }
+            - { Name: RWS_SFN_ROLE_ARN, Value: !GetAtt StepFunctionsRole.Arn }
+            - { Name: RWS_TASK_ARN_VALIDATE_DATASET, Value: !GetAtt ValidateDatasetFunction.Arn }
+            - { Name: RWS_TASK_ARN_COMPUTE_CHECKSUMS, Value: !GetAtt ComputeChecksumsFunction.Arn }
+            - { Name: RWS_TASK_ARN_COPY_OBJECTS, Value: !GetAtt CopyObjectsFunction.Arn }
+            - { Name: RWS_TASK_ARN_NOTIFY, Value: !GetAtt NotifyFunction.Arn }
+          Secrets:
+            - { Name: RWS_DATABASE_URL, ValueFrom: !Ref DatabaseUrlSecretArn }
+          HealthCheck:
+            Command:
+              - CMD
+              - python
+              - -c
+              - "import urllib.request; urllib.request.urlopen('http://localhost:8000/healthz')"
+            Interval: 30
+            Timeout: 5
+            Retries: 3
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref ApiLogGroup
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: api
+
+  ApiService:
+    Type: AWS::ECS::Service
+    Properties:
+      Cluster: !Ref Cluster
+      LaunchType: FARGATE
+      DesiredCount: 2
+      TaskDefinition: !Ref ApiTaskDefinition
+      DeploymentConfiguration:
+        MinimumHealthyPercent: 100
+        MaximumPercent: 200
+        DeploymentCircuitBreaker: { Enable: true, Rollback: true }
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          AssignPublicIp: DISABLED
+          Subnets: !Ref SubnetIds
+          SecurityGroups: !Ref SecurityGroupIds
+
+Outputs:
+  DataBucketName:
+    Value: !Ref DataBucket
+  ArchiveBucketName:
+    Value: !Ref ArchiveBucket
+  ExampleStateMachineArn:
+    Value: !Ref ArchiveDatasetStateMachine
+  ClusterName:
+    Value: !Ref Cluster

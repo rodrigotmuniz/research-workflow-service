@@ -1,0 +1,130 @@
+{
+  "Comment": "Validate a dataset, write a checksum manifest, copy it to the archive bucket and notify.",
+  "StartAt": "validate",
+  "States": {
+    "validate": {
+      "Type": "Task",
+      "Resource": "${ValidateDatasetFunctionArn}",
+      "Parameters": {
+        "run_id.$": "$.run_id",
+        "step_id": "validate",
+        "params": {
+          "bucket.$": "$.input.bucket",
+          "prefix.$": "$.input.prefix",
+          "min_objects": 1,
+          "allowed_extensions": [
+            ".csv",
+            ".json",
+            ".txt"
+          ]
+        }
+      },
+      "ResultPath": "$.results.validate",
+      "TimeoutSeconds": 300,
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "TransientError",
+            "Lambda.ServiceException",
+            "Lambda.SdkClientException",
+            "Lambda.TooManyRequestsException",
+            "States.Timeout"
+          ],
+          "IntervalSeconds": 1,
+          "MaxAttempts": 2,
+          "BackoffRate": 2.0
+        }
+      ],
+      "Next": "checksums"
+    },
+    "checksums": {
+      "Type": "Task",
+      "Resource": "${ComputeChecksumsFunctionArn}",
+      "Parameters": {
+        "run_id.$": "$.run_id",
+        "step_id": "checksums",
+        "params": {
+          "bucket.$": "$.input.bucket",
+          "prefix.$": "$.input.prefix",
+          "algorithm": "sha256"
+        }
+      },
+      "ResultPath": "$.results.checksums",
+      "TimeoutSeconds": 300,
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "TransientError",
+            "Lambda.ServiceException",
+            "Lambda.SdkClientException",
+            "Lambda.TooManyRequestsException",
+            "States.Timeout"
+          ],
+          "IntervalSeconds": 1,
+          "MaxAttempts": 2,
+          "BackoffRate": 2.0
+        }
+      ],
+      "Next": "archive"
+    },
+    "archive": {
+      "Type": "Task",
+      "Resource": "${CopyObjectsFunctionArn}",
+      "Parameters": {
+        "run_id.$": "$.run_id",
+        "step_id": "archive",
+        "params": {
+          "source_bucket.$": "$.input.bucket",
+          "source_prefix.$": "$.input.prefix",
+          "dest_bucket.$": "$.input.archive_bucket",
+          "dest_prefix.$": "$.input.archive_prefix"
+        }
+      },
+      "ResultPath": "$.results.archive",
+      "TimeoutSeconds": 300,
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "TransientError",
+            "Lambda.ServiceException",
+            "Lambda.SdkClientException",
+            "Lambda.TooManyRequestsException",
+            "States.Timeout"
+          ],
+          "IntervalSeconds": 2,
+          "MaxAttempts": 4,
+          "BackoffRate": 2.0
+        }
+      ],
+      "Next": "notify"
+    },
+    "notify": {
+      "Type": "Task",
+      "Resource": "${NotifyFunctionArn}",
+      "Parameters": {
+        "run_id.$": "$.run_id",
+        "step_id": "notify",
+        "params": {
+          "message": "Run {run_id}: dataset archived"
+        }
+      },
+      "ResultPath": "$.results.notify",
+      "TimeoutSeconds": 300,
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "TransientError",
+            "Lambda.ServiceException",
+            "Lambda.SdkClientException",
+            "Lambda.TooManyRequestsException",
+            "States.Timeout"
+          ],
+          "IntervalSeconds": 1,
+          "MaxAttempts": 2,
+          "BackoffRate": 2.0
+        }
+      ],
+      "End": true
+    }
+  }
+}
