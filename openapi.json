@@ -1,0 +1,1169 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Research Workflow Service",
+    "description": "\nDefine multi-step data automation flows (validate a dataset, compute checksums,\ncopy to an archive, notify), start runs asynchronously and track their status.\n\nAll endpoints except health checks need an OAuth2 bearer token (JWT) with the\nscopes listed on each operation: `flows:read`, `flows:write`, `runs:start`.\n",
+    "version": "0.1.0"
+  },
+  "paths": {
+    "/healthz": {
+      "get": {
+        "tags": [
+          "health"
+        ],
+        "summary": "Liveness",
+        "description": "The process is up. Deliberately does not touch dependencies.",
+        "operationId": "liveness_healthz_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Health"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/readyz": {
+      "get": {
+        "tags": [
+          "health"
+        ],
+        "summary": "Readiness",
+        "description": "Ready to serve traffic: the database answers.",
+        "operationId": "readiness_readyz_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Health"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/flows": {
+      "post": {
+        "tags": [
+          "flows"
+        ],
+        "summary": "Create Flow",
+        "operationId": "create_flow_flows_post",
+        "security": [
+          {
+            "HTTPBearer": [
+              "flows:write"
+            ]
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FlowCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FlowOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "flows"
+        ],
+        "summary": "List Flows",
+        "operationId": "list_flows_flows_get",
+        "security": [
+          {
+            "HTTPBearer": [
+              "flows:read"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "default": 20,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FlowPage"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/flows/{flow_id}": {
+      "get": {
+        "tags": [
+          "flows"
+        ],
+        "summary": "Get Flow",
+        "operationId": "get_flow_flows__flow_id__get",
+        "security": [
+          {
+            "HTTPBearer": [
+              "flows:read"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "flow_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Flow Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FlowOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/flows/{flow_id}/runs": {
+      "post": {
+        "tags": [
+          "runs"
+        ],
+        "summary": "Start Run",
+        "description": "Start a run asynchronously. Returns 202 at once; poll ``GET /runs/{id}``.",
+        "operationId": "start_run_flows__flow_id__runs_post",
+        "security": [
+          {
+            "HTTPBearer": [
+              "runs:start"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "flow_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Flow Id"
+            }
+          },
+          {
+            "name": "idempotency-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 255
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Makes retries safe: same key = same run",
+              "title": "Idempotency-Key"
+            },
+            "description": "Makes retries safe: same key = same run"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RunCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunOut"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Replay: a run with this Idempotency-Key already exists"
+          },
+          "409": {
+            "description": "Idempotency-Key reused with a different request"
+          },
+          "503": {
+            "description": "Executor unavailable; retry with the same Idempotency-Key"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/runs": {
+      "get": {
+        "tags": [
+          "runs"
+        ],
+        "summary": "List Runs",
+        "operationId": "list_runs_runs_get",
+        "security": [
+          {
+            "HTTPBearer": [
+              "flows:read"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "flow_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Flow Id"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/RunStatus"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "default": 20,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunPage"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/runs/{run_id}": {
+      "get": {
+        "tags": [
+          "runs"
+        ],
+        "summary": "Get Run",
+        "operationId": "get_run_runs__run_id__get",
+        "security": [
+          {
+            "HTTPBearer": [
+              "flows:read"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Run Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/runs/{run_id}/cancel": {
+      "post": {
+        "tags": [
+          "runs"
+        ],
+        "summary": "Cancel Run",
+        "operationId": "cancel_run_runs__run_id__cancel_post",
+        "security": [
+          {
+            "HTTPBearer": [
+              "runs:start"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Run Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "ComputeChecksumsParams": {
+        "properties": {
+          "bucket": {
+            "type": "string",
+            "title": "Bucket"
+          },
+          "prefix": {
+            "type": "string",
+            "title": "Prefix"
+          },
+          "algorithm": {
+            "type": "string",
+            "enum": [
+              "sha256",
+              "md5"
+            ],
+            "title": "Algorithm",
+            "default": "sha256"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "bucket",
+          "prefix"
+        ],
+        "title": "ComputeChecksumsParams"
+      },
+      "ComputeChecksumsStep": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]{0,63}$",
+            "title": "Id"
+          },
+          "retry": {
+            "$ref": "#/components/schemas/RetryPolicy"
+          },
+          "timeout_seconds": {
+            "type": "integer",
+            "maximum": 900.0,
+            "minimum": 1.0,
+            "title": "Timeout Seconds",
+            "default": 300
+          },
+          "action": {
+            "type": "string",
+            "const": "compute_checksums",
+            "title": "Action"
+          },
+          "params": {
+            "$ref": "#/components/schemas/ComputeChecksumsParams"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "action",
+          "params"
+        ],
+        "title": "ComputeChecksumsStep"
+      },
+      "CopyObjectsParams": {
+        "properties": {
+          "source_bucket": {
+            "type": "string",
+            "title": "Source Bucket"
+          },
+          "source_prefix": {
+            "type": "string",
+            "title": "Source Prefix"
+          },
+          "dest_bucket": {
+            "type": "string",
+            "title": "Dest Bucket"
+          },
+          "dest_prefix": {
+            "type": "string",
+            "title": "Dest Prefix"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "source_bucket",
+          "source_prefix",
+          "dest_bucket",
+          "dest_prefix"
+        ],
+        "title": "CopyObjectsParams"
+      },
+      "CopyObjectsStep": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]{0,63}$",
+            "title": "Id"
+          },
+          "retry": {
+            "$ref": "#/components/schemas/RetryPolicy"
+          },
+          "timeout_seconds": {
+            "type": "integer",
+            "maximum": 900.0,
+            "minimum": 1.0,
+            "title": "Timeout Seconds",
+            "default": 300
+          },
+          "action": {
+            "type": "string",
+            "const": "copy_objects",
+            "title": "Action"
+          },
+          "params": {
+            "$ref": "#/components/schemas/CopyObjectsParams"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "action",
+          "params"
+        ],
+        "title": "CopyObjectsStep"
+      },
+      "FlowCreate": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Name"
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 2000,
+            "title": "Description",
+            "default": ""
+          },
+          "definition": {
+            "$ref": "#/components/schemas/FlowDefinition"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "name",
+          "definition"
+        ],
+        "title": "FlowCreate"
+      },
+      "FlowDefinition": {
+        "properties": {
+          "steps": {
+            "items": {
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/ValidateDatasetStep"
+                },
+                {
+                  "$ref": "#/components/schemas/ComputeChecksumsStep"
+                },
+                {
+                  "$ref": "#/components/schemas/CopyObjectsStep"
+                },
+                {
+                  "$ref": "#/components/schemas/NotifyStep"
+                }
+              ],
+              "discriminator": {
+                "propertyName": "action",
+                "mapping": {
+                  "compute_checksums": "#/components/schemas/ComputeChecksumsStep",
+                  "copy_objects": "#/components/schemas/CopyObjectsStep",
+                  "notify": "#/components/schemas/NotifyStep",
+                  "validate_dataset": "#/components/schemas/ValidateDatasetStep"
+                }
+              }
+            },
+            "type": "array",
+            "maxItems": 20,
+            "minItems": 1,
+            "title": "Steps"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "steps"
+        ],
+        "title": "FlowDefinition"
+      },
+      "FlowOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description"
+          },
+          "definition": {
+            "$ref": "#/components/schemas/FlowDefinition"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "description",
+          "definition",
+          "created_at"
+        ],
+        "title": "FlowOut"
+      },
+      "FlowPage": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/FlowOut"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "next_cursor"
+        ],
+        "title": "FlowPage"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "Health": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "version": {
+            "type": "string",
+            "title": "Version"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "version"
+        ],
+        "title": "Health"
+      },
+      "NotifyParams": {
+        "properties": {
+          "message": {
+            "type": "string",
+            "title": "Message"
+          },
+          "webhook_url": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^(https?://|\\$\\.)"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Webhook Url"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "message"
+        ],
+        "title": "NotifyParams"
+      },
+      "NotifyStep": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]{0,63}$",
+            "title": "Id"
+          },
+          "retry": {
+            "$ref": "#/components/schemas/RetryPolicy"
+          },
+          "timeout_seconds": {
+            "type": "integer",
+            "maximum": 900.0,
+            "minimum": 1.0,
+            "title": "Timeout Seconds",
+            "default": 300
+          },
+          "action": {
+            "type": "string",
+            "const": "notify",
+            "title": "Action"
+          },
+          "params": {
+            "$ref": "#/components/schemas/NotifyParams"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "action",
+          "params"
+        ],
+        "title": "NotifyStep"
+      },
+      "RetryPolicy": {
+        "properties": {
+          "max_attempts": {
+            "type": "integer",
+            "maximum": 10.0,
+            "minimum": 1.0,
+            "title": "Max Attempts",
+            "description": "Total attempts, including the first.",
+            "default": 3
+          },
+          "interval_seconds": {
+            "type": "integer",
+            "maximum": 300.0,
+            "minimum": 1.0,
+            "title": "Interval Seconds",
+            "description": "Delay before the first retry.",
+            "default": 1
+          },
+          "backoff_rate": {
+            "type": "number",
+            "maximum": 10.0,
+            "minimum": 1.0,
+            "title": "Backoff Rate",
+            "description": "Delay multiplier per retry.",
+            "default": 2.0
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "RetryPolicy",
+        "description": "Retries for transient task errors, with exponential backoff."
+      },
+      "RunCreate": {
+        "properties": {
+          "input": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Input",
+            "description": "Available to steps as $.input"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "RunCreate"
+      },
+      "RunOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "flow_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Flow Id"
+          },
+          "status": {
+            "$ref": "#/components/schemas/RunStatus"
+          },
+          "input": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Input"
+          },
+          "output": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Output"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "current_step": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Step"
+          },
+          "attempts": {
+            "type": "integer",
+            "title": "Attempts"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "flow_id",
+          "status",
+          "input",
+          "output",
+          "error",
+          "current_step",
+          "attempts",
+          "created_at",
+          "started_at",
+          "finished_at"
+        ],
+        "title": "RunOut"
+      },
+      "RunPage": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/RunOut"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "next_cursor"
+        ],
+        "title": "RunPage"
+      },
+      "RunStatus": {
+        "type": "string",
+        "enum": [
+          "PENDING",
+          "RUNNING",
+          "SUCCEEDED",
+          "FAILED",
+          "CANCELLED"
+        ],
+        "title": "RunStatus"
+      },
+      "ValidateDatasetParams": {
+        "properties": {
+          "bucket": {
+            "type": "string",
+            "title": "Bucket"
+          },
+          "prefix": {
+            "type": "string",
+            "title": "Prefix"
+          },
+          "min_objects": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Min Objects",
+            "default": 1
+          },
+          "allowed_extensions": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Allowed Extensions"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "bucket",
+          "prefix"
+        ],
+        "title": "ValidateDatasetParams"
+      },
+      "ValidateDatasetStep": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]{0,63}$",
+            "title": "Id"
+          },
+          "retry": {
+            "$ref": "#/components/schemas/RetryPolicy"
+          },
+          "timeout_seconds": {
+            "type": "integer",
+            "maximum": 900.0,
+            "minimum": 1.0,
+            "title": "Timeout Seconds",
+            "default": 300
+          },
+          "action": {
+            "type": "string",
+            "const": "validate_dataset",
+            "title": "Action"
+          },
+          "params": {
+            "$ref": "#/components/schemas/ValidateDatasetParams"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "action",
+          "params"
+        ],
+        "title": "ValidateDatasetStep"
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "ctx": {
+            "type": "object",
+            "title": "Context"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      }
+    },
+    "securitySchemes": {
+      "HTTPBearer": {
+        "type": "http",
+        "description": "OAuth2 access token (JWT)",
+        "scheme": "bearer"
+      }
+    }
+  }
+}

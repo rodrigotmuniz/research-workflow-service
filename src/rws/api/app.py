@@ -67,8 +67,11 @@ def create_app(settings: Settings | None = None, *, executor: Executor | None = 
         version=__version__,
         description=DESCRIPTION,
         lifespan=lifespan,
+        # One schema per model (no "-Input"/"-Output" variants): simpler generated clients.
+        separate_input_output_schemas=False,
     )
     app.state.settings = settings
+    app.state.engine = engine
     app.state.session_factory = session_factory
     app.state.executor = executor or build_executor(settings, session_factory)
 
