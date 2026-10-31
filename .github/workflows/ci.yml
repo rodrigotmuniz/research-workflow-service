@@ -1,0 +1,82 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    name: Lint, type-check, contracts
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - run: uv sync --frozen
+      - name: ruff
+        run: |
+          uv run ruff check .
+          uv run ruff format --check .
+      - name: mypy
+        run: uv run mypy
+      - name: CloudFormation / SAM template
+        run: uv run cfn-lint infra/template.yaml
+      - name: shellcheck
+        run: shellcheck scripts/*.sh docker/*.sh docker/localstack/*.sh
+      - name: OpenAPI schema and generated client are up to date
+        run: |
+          ./scripts/generate-client.sh
+          git diff --exit-code openapi.json src/rws/client/models.py
+
+  test:
+    name: Tests (${{ matrix.database }})
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        database: [sqlite, postgres]
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: rws
+          POSTGRES_PASSWORD: rws-ci-only
+          POSTGRES_DB: rws_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U rws -d rws_test"
+          --health-interval 2s --health-retries 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - run: uv sync --frozen
+      - name: pytest
+        env:
+          TEST_DATABASE_URL: ${{ matrix.database == 'postgres' && 'postgresql+psycopg://rws:rws-ci-only@localhost:5432/rws_test' || '' }}
+        run: uv run pytest --cov --cov-report=term
+
+  docker:
+    name: Docker image + end-to-end smoke
+    runs-on: ubuntu-latest
+    needs: [lint]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build and start the stack
+        run: docker compose up -d --build --wait
+      - name: Smoke test (create flow, start run, wait for SUCCEEDED)
+        run: ./scripts/smoke.sh
+      - name: Logs on failure
+        if: failure()
+        run: docker compose logs
+      - run: docker compose down -v
+        if: always()

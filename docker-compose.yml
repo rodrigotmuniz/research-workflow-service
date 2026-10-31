@@ -6,7 +6,7 @@ services:
       POSTGRES_USER: rws
       POSTGRES_PASSWORD: rws-local-only
       POSTGRES_DB: rws
-    ports: ["5432:5432"]
+    ports: ["5433:5432"]  # 5433 on the host to avoid clashing with a local Postgres
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U rws -d rws"]
       interval: 2s

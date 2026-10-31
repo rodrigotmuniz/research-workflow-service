@@ -42,7 +42,7 @@ def aws_env(monkeypatch: pytest.MonkeyPatch) -> None:
 @pytest.fixture
 def settings(tmp_path: Path) -> Settings:
     # A file (not :memory:) so the API and executor threads use separate connections.
-    db_url = os.environ.get("TEST_DATABASE_URL", f"sqlite:///{tmp_path / 'test.db'}")
+    db_url = os.environ.get("TEST_DATABASE_URL") or f"sqlite:///{tmp_path / 'test.db'}"
     return Settings(database_url=db_url, log_json=False, auth_mode="dev")
 
 
