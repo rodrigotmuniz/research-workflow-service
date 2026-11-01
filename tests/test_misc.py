@@ -44,6 +44,21 @@ def test_readiness_ok_and_request_id_is_echoed(client: TestClient) -> None:
     assert resp.headers["X-Request-ID"] == "abc"
 
 
+@pytest.mark.parametrize(
+    "bad_id",
+    ["x" * 129, "abc\ninjected log line", "<script>", "spaces are not ok", ""],
+)
+def test_unsafe_request_ids_are_replaced(client: TestClient, bad_id: str) -> None:
+    resp = client.get("/healthz", headers={"X-Request-ID": bad_id})
+    assert resp.headers["X-Request-ID"] != bad_id
+    assert len(resp.headers["X-Request-ID"]) == 32  # a fresh uuid4 hex
+
+
+def test_request_id_up_to_128_safe_chars_is_kept(client: TestClient) -> None:
+    good = "trace-1.2:3_" + "a" * 116
+    assert client.get("/healthz", headers={"X-Request-ID": good}).headers["X-Request-ID"] == good
+
+
 def test_readiness_fails_without_database(app: FastAPI, client: TestClient) -> None:
     app.state.session_factory = sessionmaker(bind=create_engine("sqlite:////nonexistent/dir/x.db"))
     assert client.get("/readyz").status_code == 503

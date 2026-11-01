@@ -6,6 +6,7 @@ Run with ``uvicorn rws.api.app:create_app --factory``.
 from __future__ import annotations
 
 import logging
+import re
 import time
 import uuid
 from collections.abc import AsyncIterator, Awaitable, Callable
@@ -28,6 +29,17 @@ from rws.logging import configure_logging, request_id_var
 from rws.pagination import InvalidCursor
 
 log = logging.getLogger("rws.api")
+
+# Inbound X-Request-ID values end up in every log line, so accept only short, plain ids.
+REQUEST_ID_PATTERN = re.compile(r"[A-Za-z0-9._:-]{1,128}")
+
+
+def request_id_from(header: str | None) -> str:
+    """The caller's request id if it is safe to log, otherwise a fresh one."""
+    if header and REQUEST_ID_PATTERN.fullmatch(header):
+        return header
+    return uuid.uuid4().hex
+
 
 DESCRIPTION = """
 Define multi-step data automation flows (validate a dataset, compute checksums,
@@ -95,7 +107,7 @@ def create_app(settings: Settings | None = None, *, executor: Executor | None = 
     async def request_context(
         request: Request, call_next: Callable[[Request], Awaitable[Response]]
     ) -> Response:
-        request_id = request.headers.get("x-request-id") or uuid.uuid4().hex
+        request_id = request_id_from(request.headers.get("x-request-id"))
         token = request_id_var.set(request_id)
         started = time.perf_counter()
         try:
