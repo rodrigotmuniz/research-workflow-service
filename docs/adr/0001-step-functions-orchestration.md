@@ -20,6 +20,12 @@ runs; one Standard execution per run, named after the run id.
   service errors, with `IntervalSeconds`, `BackoffRate`, `MaxDelaySeconds` and
   `"JitterStrategy": "FULL"` (the local executor computes the same capped, jittered
   delays); any other error fails the execution.
+- Each Task state gets `TimeoutSeconds` from its step (`timeout_seconds`, at most 900).
+  Every task Lambda has a 900-second timeout, Lambda's maximum, so the state's own
+  timeout is the one that fires. Timeouts (`States.Timeout`, or `Sandbox.Timedout` /
+  `Lambda.Unknown` from Lambda) are not retried: the step would likely time out again,
+  and Step Functions does not stop the Lambda that is still running, so a retry would
+  overlap with it. The run fails with the timeout as its error.
 - Flows are immutable, so a state machine never needs updating.
 
 ## Consequences

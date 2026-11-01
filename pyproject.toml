@@ -64,7 +64,7 @@ module = ["rws.client.models"]
 ignore_errors = true
 
 [[tool.mypy.overrides]]
-module = ["moto", "moto.*"]
+module = ["moto", "moto.*", "yaml"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]

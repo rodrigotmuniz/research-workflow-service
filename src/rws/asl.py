@@ -12,14 +12,20 @@ from typing import Any
 
 from rws.flows import FlowDefinition
 
-# Errors worth retrying: our own TransientError plus Lambda/Step Functions hiccups.
-# Anything else (e.g. DatasetValidationError) fails the run immediately.
+# Errors worth retrying: our own TransientError plus transient Lambda service errors
+# (the invocation itself failed, as listed in the Step Functions best practices).
+# Anything else fails the run immediately: permanent task errors such as
+# DatasetValidationError, and timeouts. A timed-out step (States.Timeout from the
+# state's TimeoutSeconds, or Sandbox.Timedout / Lambda.Unknown from Lambda's own
+# limit) is not retried: it would likely time out again, and Step Functions does not
+# stop the Lambda that is still running, so a retry would overlap with it.
 RETRYABLE_ERRORS = [
     "TransientError",
     "Lambda.ServiceException",
+    "Lambda.AWSLambdaException",
     "Lambda.SdkClientException",
+    "Lambda.ClientExecutionTimeoutException",
     "Lambda.TooManyRequestsException",
-    "States.Timeout",
 ]
 
 

@@ -166,6 +166,11 @@ Longer write-ups are in [`docs/adr/`](docs/adr).
   get `BackoffRate`, `MaxDelaySeconds` and `"JitterStrategy": "FULL"`, and the local
   executor computes the same delays in `src/rws/tasks/retry.py`. `TaskError` (bad input,
   missing bucket, failed validation) fails the run immediately with a readable `error`.
+- **Timeouts are explicit and not retried.** Each step has `timeout_seconds` (default
+  300, at most 900 = Lambda's limit and the Lambda `Timeout` in the template). It becomes
+  the Task state's `TimeoutSeconds`, and the local executor enforces it too. A timed-out
+  step fails the run instead of being retried, because the timed-out invocation may still
+  be running.
 - **Webhooks are SSRF-guarded** (`src/rws/tasks/webhooks.py`). The `notify` step posts to
   a user-supplied URL from inside our network, so the URL must be `https` and every
   address its host resolves to must be public (no private, loopback, link-local such as

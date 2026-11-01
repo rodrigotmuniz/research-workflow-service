@@ -26,9 +26,10 @@
           "ErrorEquals": [
             "TransientError",
             "Lambda.ServiceException",
+            "Lambda.AWSLambdaException",
             "Lambda.SdkClientException",
-            "Lambda.TooManyRequestsException",
-            "States.Timeout"
+            "Lambda.ClientExecutionTimeoutException",
+            "Lambda.TooManyRequestsException"
           ],
           "IntervalSeconds": 1,
           "MaxAttempts": 2,
@@ -58,9 +59,10 @@
           "ErrorEquals": [
             "TransientError",
             "Lambda.ServiceException",
+            "Lambda.AWSLambdaException",
             "Lambda.SdkClientException",
-            "Lambda.TooManyRequestsException",
-            "States.Timeout"
+            "Lambda.ClientExecutionTimeoutException",
+            "Lambda.TooManyRequestsException"
           ],
           "IntervalSeconds": 1,
           "MaxAttempts": 2,
@@ -91,9 +93,10 @@
           "ErrorEquals": [
             "TransientError",
             "Lambda.ServiceException",
+            "Lambda.AWSLambdaException",
             "Lambda.SdkClientException",
-            "Lambda.TooManyRequestsException",
-            "States.Timeout"
+            "Lambda.ClientExecutionTimeoutException",
+            "Lambda.TooManyRequestsException"
           ],
           "IntervalSeconds": 2,
           "MaxAttempts": 4,
@@ -121,9 +124,10 @@
           "ErrorEquals": [
             "TransientError",
             "Lambda.ServiceException",
+            "Lambda.AWSLambdaException",
             "Lambda.SdkClientException",
-            "Lambda.TooManyRequestsException",
-            "States.Timeout"
+            "Lambda.ClientExecutionTimeoutException",
+            "Lambda.TooManyRequestsException"
           ],
           "IntervalSeconds": 1,
           "MaxAttempts": 2,

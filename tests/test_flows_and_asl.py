@@ -2,10 +2,11 @@ import json
 from typing import Any
 
 import pytest
+import yaml
 from pydantic import ValidationError
 
 from rws.asl import TEMPLATE_ARNS, compile_to_asl, main, to_asl_parameters
-from rws.flows import FlowDefinition
+from rws.flows import MAX_STEP_TIMEOUT_SECONDS, FlowDefinition
 from tests.conftest import ROOT
 
 
@@ -113,6 +114,39 @@ def test_no_retry_block_when_single_attempt() -> None:
         }
     )
     assert "Retry" not in compile_to_asl(definition, TEMPLATE_ARNS)["States"]["n"]
+
+
+def test_timeouts_are_not_retried(example_flow: dict[str, Any]) -> None:
+    """A timed-out Lambda may still be running; retrying would overlap with it."""
+    definition = FlowDefinition.model_validate(example_flow["definition"])
+    for state in compile_to_asl(definition, TEMPLATE_ARNS)["States"].values():
+        errors = state["Retry"][0]["ErrorEquals"]
+        assert "Lambda.ServiceException" in errors
+        assert not {"States.Timeout", "Sandbox.Timedout", "Lambda.Unknown"} & set(errors)
+
+
+def test_step_timeout_is_set_on_the_task_and_capped() -> None:
+    step = {"id": "n", "action": "notify", "params": {"message": "m"}, "timeout_seconds": 42}
+    asl = compile_to_asl(FlowDefinition.model_validate({"steps": [step]}), TEMPLATE_ARNS)
+    assert asl["States"]["n"]["TimeoutSeconds"] == 42
+    with pytest.raises(ValidationError, match="less than or equal to 900"):
+        FlowDefinition.model_validate({"steps": [{**step, "timeout_seconds": 901}]})
+
+
+def test_task_lambdas_can_run_as_long_as_the_longest_step() -> None:
+    """The Lambda timeout must not be shorter than any step's TimeoutSeconds."""
+
+    class Loader(yaml.SafeLoader):  # type: ignore[misc]
+        pass
+
+    Loader.add_multi_constructor("!", lambda loader, suffix, node: None)  # ignore !Ref etc.
+    template = yaml.load((ROOT / "infra/template.yaml").read_text(), Loader=Loader)  # noqa: S506
+    assert template["Globals"]["Function"]["Timeout"] >= MAX_STEP_TIMEOUT_SECONDS
+    functions = [
+        r for r in template["Resources"].values() if r["Type"] == "AWS::Serverless::Function"
+    ]
+    assert len(functions) == 4
+    assert all("Timeout" not in f["Properties"] for f in functions)
 
 
 def test_compile_requires_an_arn_per_action(example_flow: dict[str, Any]) -> None:

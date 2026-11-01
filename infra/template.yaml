@@ -27,7 +27,10 @@ Globals:
   Function:
     Runtime: python3.12
     CodeUri: ../src
-    Timeout: 300
+    # Lambda's maximum, and the maximum step timeout_seconds (MAX_STEP_TIMEOUT_SECONDS in
+    # src/rws/flows.py). Each Task state sets TimeoutSeconds to its step's timeout, which
+    # is never longer than the Lambda can run. Do not lower it per function.
+    Timeout: 900
     MemorySize: 512
     Architectures: [arm64]
     Tracing: Active
@@ -87,7 +90,6 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       Handler: rws.tasks.handlers.notify_handler
-      Timeout: 30
 
   # ---------------------------------------------------------------- Step Functions
   StepFunctionsRole:

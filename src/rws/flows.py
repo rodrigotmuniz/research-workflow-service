@@ -17,6 +17,10 @@ from rws.tasks.webhooks import check_url
 
 StepId = Annotated[str, Field(pattern=r"^[a-z][a-z0-9_]{0,63}$")]
 
+# A step runs in one Lambda invocation, so it cannot outlive Lambda's 15-minute limit.
+# infra/template.yaml sets every task Lambda's Timeout to this value (a test checks it).
+MAX_STEP_TIMEOUT_SECONDS = 900
+
 
 class _Strict(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -69,7 +73,7 @@ class NotifyParams(_Strict):
 class _StepBase(_Strict):
     id: StepId
     retry: RetryPolicy = Field(default_factory=RetryPolicy)
-    timeout_seconds: int = Field(300, ge=1, le=900)
+    timeout_seconds: int = Field(300, ge=1, le=MAX_STEP_TIMEOUT_SECONDS)
 
 
 class ValidateDatasetStep(_StepBase):
