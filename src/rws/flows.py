@@ -21,11 +21,12 @@ class _Strict(BaseModel):
 
 
 class RetryPolicy(_Strict):
-    """Retries for transient task errors, with exponential backoff."""
+    """Retries for transient task errors: exponential backoff, capped, with full jitter."""
 
     max_attempts: int = Field(3, ge=1, le=10, description="Total attempts, including the first.")
     interval_seconds: int = Field(1, ge=1, le=300, description="Delay before the first retry.")
     backoff_rate: float = Field(2.0, ge=1.0, le=10.0, description="Delay multiplier per retry.")
+    max_delay_seconds: int = Field(60, ge=1, le=3600, description="Longest delay between retries.")
 
 
 class ValidateDatasetParams(_Strict):

@@ -20,17 +20,20 @@ class RetrySettings(Protocol):
     def interval_seconds(self) -> int: ...
     @property
     def backoff_rate(self) -> float: ...
+    @property
+    def max_delay_seconds(self) -> int: ...
 
 
 def backoff_delays(policy: RetrySettings, jitter: bool = True) -> list[float]:
     """Delays before each retry: interval, interval*rate, interval*rate^2, ...
 
-    "Full jitter" picks a random delay in ``[0, delay]`` so many failing clients
-    do not retry in lockstep against an already struggling dependency.
+    Each delay is capped at ``max_delay_seconds`` (ASL ``MaxDelaySeconds``). "Full
+    jitter" (ASL ``JitterStrategy: FULL``) then picks a random delay in ``[0, delay]``
+    so many failing clients do not retry in lockstep against a struggling dependency.
     """
     delays = []
     for retry in range(policy.max_attempts - 1):
-        delay = policy.interval_seconds * policy.backoff_rate**retry
+        delay = min(policy.interval_seconds * policy.backoff_rate**retry, policy.max_delay_seconds)
         delays.append(random.uniform(0, delay) if jitter else delay)  # noqa: S311
     return delays
 

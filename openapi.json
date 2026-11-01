@@ -880,12 +880,20 @@
             "title": "Backoff Rate",
             "description": "Delay multiplier per retry.",
             "default": 2.0
+          },
+          "max_delay_seconds": {
+            "type": "integer",
+            "maximum": 3600.0,
+            "minimum": 1.0,
+            "title": "Max Delay Seconds",
+            "description": "Longest delay between retries.",
+            "default": 60
           }
         },
         "additionalProperties": false,
         "type": "object",
         "title": "RetryPolicy",
-        "description": "Retries for transient task errors, with exponential backoff."
+        "description": "Retries for transient task errors: exponential backoff, capped, with full jitter."
       },
       "RunCreate": {
         "properties": {

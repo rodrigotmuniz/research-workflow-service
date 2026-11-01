@@ -79,6 +79,9 @@ def test_compile_builds_a_linear_state_machine(example_flow: dict[str, Any]) -> 
     # 5 attempts in our model = 4 retries in ASL.
     assert archive["Retry"][0]["MaxAttempts"] == 4
     assert "TransientError" in archive["Retry"][0]["ErrorEquals"]
+    # Same backoff shape as the local executor: capped, with full jitter.
+    assert archive["Retry"][0]["MaxDelaySeconds"] == 60
+    assert archive["Retry"][0]["JitterStrategy"] == "FULL"
 
 
 def test_no_retry_block_when_single_attempt() -> None:

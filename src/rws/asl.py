@@ -65,6 +65,9 @@ def compile_to_asl(
                     "IntervalSeconds": step.retry.interval_seconds,
                     "MaxAttempts": step.retry.max_attempts - 1,  # ASL counts retries only
                     "BackoffRate": step.retry.backoff_rate,
+                    "MaxDelaySeconds": step.retry.max_delay_seconds,
+                    # Random delay in [0, backoff delay], same as the local executor.
+                    "JitterStrategy": "FULL",
                 }
             ]
         if index + 1 < len(steps):

@@ -10,6 +10,11 @@ def test_backoff_is_exponential_without_jitter() -> None:
     assert backoff_delays(policy, jitter=False) == [1, 2, 4]
 
 
+def test_backoff_is_capped_at_max_delay() -> None:
+    policy = RetryPolicy(max_attempts=5, interval_seconds=10, backoff_rate=3, max_delay_seconds=60)
+    assert backoff_delays(policy, jitter=False) == [10, 30, 60, 60]
+
+
 def test_jitter_stays_within_bounds() -> None:
     policy = RetryPolicy(max_attempts=4, interval_seconds=2, backoff_rate=3.0)
     for delay, cap in zip(backoff_delays(policy), [2, 6, 18], strict=True):

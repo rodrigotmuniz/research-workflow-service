@@ -132,7 +132,7 @@ with the same meaning in both executors because they map 1:1 to ASL `"key.$"` pa
 {"id": "archive", "action": "copy_objects",
  "params": {"source_bucket": "$.input.bucket", "source_prefix": "$.input.prefix",
             "dest_bucket": "$.input.archive_bucket", "dest_prefix": "$.input.archive_prefix"},
- "retry": {"max_attempts": 5, "interval_seconds": 2, "backoff_rate": 2.0}}
+ "retry": {"max_attempts": 5, "interval_seconds": 2, "backoff_rate": 2.0, "max_delay_seconds": 60}}
 ```
 
 Actions: `validate_dataset`, `compute_checksums`, `copy_objects`, `notify`. Definitions are
@@ -162,9 +162,10 @@ Longer write-ups are in [`docs/adr/`](docs/adr).
   same key + different body is `409`. If the executor is down, the run stays `PENDING`,
   the API answers `503 Retry-After`, and a retry with the same key launches it.
 - **Errors are classified.** `TransientError` (throttling, 5xx, network) is retried with
-  exponential backoff and jitter, both in ASL `Retry` blocks and in the local executor;
-  `TaskError` (bad input, missing bucket, failed validation) fails the run immediately
-  with a readable `error`.
+  exponential backoff, capped at `max_delay_seconds`, with full jitter: ASL `Retry` blocks
+  get `BackoffRate`, `MaxDelaySeconds` and `"JitterStrategy": "FULL"`, and the local
+  executor computes the same delays in `src/rws/tasks/retry.py`. `TaskError` (bad input,
+  missing bucket, failed validation) fails the run immediately with a readable `error`.
 - **Status writes are compare-and-set.** `UPDATE ... WHERE status IN (allowed sources)`
   means a user cancelling and a worker finishing at the same moment cannot both win.
 - **Auth model** ([ADR 4](docs/adr/0004-auth-model.md)). Resource server only: RS256 JWTs

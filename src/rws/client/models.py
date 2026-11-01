@@ -64,6 +64,9 @@ class RetryPolicy(BaseModel):
     backoff_rate: float | None = Field(
         2.0, description='Delay multiplier per retry.', ge=1.0, le=10.0, title='Backoff Rate'
     )
+    max_delay_seconds: int | None = Field(
+        60, description='Longest delay between retries.', ge=1, le=3600, title='Max Delay Seconds'
+    )
 
 
 class RunCreate(BaseModel):

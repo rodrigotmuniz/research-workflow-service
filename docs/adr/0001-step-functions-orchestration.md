@@ -17,7 +17,9 @@ runs; one Standard execution per run, named after the run id.
 - `Task` states with `ResultPath: $.results.<step_id>` keep the run input and every step
   result in one document, so later steps can reference earlier outputs.
 - Retry policy per step maps to an ASL `Retry` block on `TransientError` and Lambda
-  service errors; any other error fails the execution.
+  service errors, with `IntervalSeconds`, `BackoffRate`, `MaxDelaySeconds` and
+  `"JitterStrategy": "FULL"` (the local executor computes the same capped, jittered
+  delays); any other error fails the execution.
 - Flows are immutable, so a state machine never needs updating.
 
 ## Consequences
