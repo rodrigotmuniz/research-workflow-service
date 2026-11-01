@@ -166,6 +166,14 @@ Longer write-ups are in [`docs/adr/`](docs/adr).
   get `BackoffRate`, `MaxDelaySeconds` and `"JitterStrategy": "FULL"`, and the local
   executor computes the same delays in `src/rws/tasks/retry.py`. `TaskError` (bad input,
   missing bucket, failed validation) fails the run immediately with a readable `error`.
+- **Webhooks are SSRF-guarded** (`src/rws/tasks/webhooks.py`). The `notify` step posts to
+  a user-supplied URL from inside our network, so the URL must be `https` and every
+  address its host resolves to must be public (no private, loopback, link-local such as
+  the `169.254.169.254` metadata endpoint, multicast or reserved ranges, IPv4 or IPv6).
+  The check runs when the flow is created and again right before sending; the request
+  then connects to the IP that was checked (DNS rebinding cannot swap it), follows no
+  redirects and times out after 5 seconds. `RWS_WEBHOOK_ALLOW_HTTP=true` allows plain
+  `http` for local testing only.
 - **Status writes are compare-and-set.** `UPDATE ... WHERE status IN (allowed sources)`
   means a user cancelling and a worker finishing at the same moment cannot both win.
 - **Auth model** ([ADR 4](docs/adr/0004-auth-model.md)). Resource server only: RS256 JWTs

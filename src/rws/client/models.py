@@ -40,7 +40,12 @@ class Health(BaseModel):
 
 
 class WebhookUrl(RootModel[str]):
-    root: str = Field(..., pattern='^(https?://|\\$\\.)', title='Webhook Url')
+    root: str = Field(
+        ...,
+        description='https URL with a public host, or a $. reference',
+        max_length=2048,
+        title='Webhook Url',
+    )
 
 
 class NotifyParams(BaseModel):
@@ -48,7 +53,9 @@ class NotifyParams(BaseModel):
         extra='forbid',
     )
     message: str = Field(..., title='Message')
-    webhook_url: WebhookUrl | None = Field(None, title='Webhook Url')
+    webhook_url: WebhookUrl | None = Field(
+        None, description='https URL with a public host, or a $. reference', title='Webhook Url'
+    )
 
 
 class RetryPolicy(BaseModel):

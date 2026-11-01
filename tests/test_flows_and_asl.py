@@ -47,13 +47,28 @@ def test_example_flow_is_valid(example_flow: dict[str, Any]) -> None:
         ),
         (
             [{"id": "a", "action": "notify", "params": {"message": "m", "webhook_url": "ftp://x"}}],
-            "pattern",
+            "must use https",
+        ),
+        (
+            [
+                {
+                    "id": "a",
+                    "action": "notify",
+                    "params": {"message": "m", "webhook_url": "https://169.254.169.254/x"},
+                }
+            ],
+            "non-public address",
         ),
     ],
 )
 def test_invalid_definitions_are_rejected(steps: list[Any], message: str) -> None:
     with pytest.raises(ValidationError, match=message):
         FlowDefinition.model_validate({"steps": steps})
+
+
+def test_webhook_url_may_be_a_reference_checked_at_run_time() -> None:
+    step = {"id": "n", "action": "notify", "params": {"message": "m", "webhook_url": "$.input.h"}}
+    FlowDefinition.model_validate({"steps": [step]})
 
 
 def test_to_asl_parameters_marks_references() -> None:

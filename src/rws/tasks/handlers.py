@@ -10,8 +10,6 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
-import urllib.error
-import urllib.request
 from collections.abc import Callable, Iterator
 from typing import TYPE_CHECKING, Any
 
@@ -19,6 +17,7 @@ import boto3
 from botocore.config import Config
 from botocore.exceptions import BotoCoreError, ClientError
 
+from rws.tasks import webhooks
 from rws.tasks.errors import DatasetValidationError, TaskError, TransientError
 
 if TYPE_CHECKING:
@@ -157,7 +156,9 @@ def _same_object(s3: S3Client, bucket: str, key: str, src: dict[str, Any]) -> bo
 def notify(event: Event) -> dict[str, Any]:
     """Send a completion message to a webhook (or just log it when none is set).
 
-    The ``Idempotency-Key`` header lets the receiver drop duplicate deliveries.
+    The ``Idempotency-Key`` header lets the receiver drop duplicate deliveries. The URL
+    is checked against SSRF again here (see :mod:`rws.tasks.webhooks`), because DNS may
+    have changed since the flow was created and ``$.`` references are only known now.
     """
     p = event["params"]
     message = p["message"].replace("{run_id}", event["run_id"])
@@ -165,27 +166,19 @@ def notify(event: Event) -> dict[str, Any]:
     if not url:
         log.info("notification", extra={"notification": message})
         return {"channel": "log", "delivered": True}
-    if not url.startswith(("https://", "http://")):
-        raise TaskError("webhook_url must be http(s)")
     body = json.dumps({"run_id": event["run_id"], "message": message}).encode()
-    request = urllib.request.Request(  # noqa: S310 - scheme checked above
-        url,
-        data=body,
-        method="POST",
-        headers={
-            "Content-Type": "application/json",
-            "Idempotency-Key": f"{event['run_id']}:{event['step_id']}",
-        },
-    )
+    headers = {
+        "Content-Type": "application/json",
+        "Idempotency-Key": f"{event['run_id']}:{event['step_id']}",
+    }
     try:
-        with urllib.request.urlopen(request, timeout=10) as resp:  # noqa: S310
-            status = resp.status
-    except urllib.error.HTTPError as exc:
-        if exc.code >= 500 or exc.code == 429:
-            raise TransientError(f"webhook returned {exc.code}") from exc
-        raise TaskError(f"webhook returned {exc.code}") from exc
-    except (urllib.error.URLError, TimeoutError) as exc:
+        status = webhooks.post_json(url, body, headers)
+    except OSError as exc:  # refused, reset, timeout
         raise TransientError(f"webhook unreachable: {exc}") from exc
+    if status >= 500 or status == 429:
+        raise TransientError(f"webhook returned {status}")
+    if status >= 300:  # includes redirects, which are never followed
+        raise TaskError(f"webhook returned {status}")
     return {"channel": "webhook", "delivered": True, "status": status}
 
 

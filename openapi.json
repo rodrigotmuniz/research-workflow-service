@@ -804,13 +804,14 @@
             "anyOf": [
               {
                 "type": "string",
-                "pattern": "^(https?://|\\$\\.)"
+                "maxLength": 2048
               },
               {
                 "type": "null"
               }
             ],
-            "title": "Webhook Url"
+            "title": "Webhook Url",
+            "description": "https URL with a public host, or a $. reference"
           }
         },
         "additionalProperties": false,

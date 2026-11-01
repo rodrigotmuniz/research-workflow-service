@@ -13,6 +13,8 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from rws.tasks.webhooks import check_url
+
 StepId = Annotated[str, Field(pattern=r"^[a-z][a-z0-9_]{0,63}$")]
 
 
@@ -51,7 +53,17 @@ class CopyObjectsParams(_Strict):
 
 class NotifyParams(_Strict):
     message: str
-    webhook_url: str | None = Field(None, pattern=r"^(https?://|\$\.)")
+    webhook_url: str | None = Field(
+        None, description="https URL with a public host, or a $. reference", max_length=2048
+    )
+
+    @field_validator("webhook_url")
+    @classmethod
+    def _safe_webhook(cls, url: str | None) -> str | None:
+        # References are resolved at run time; the task checks them before sending.
+        if url is not None and not url.startswith("$."):
+            check_url(url)
+        return url
 
 
 class _StepBase(_Strict):
