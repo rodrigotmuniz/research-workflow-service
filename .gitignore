@@ -12,3 +12,6 @@ htmlcov/
 .ruff_cache/
 .aws-sam/
 dist/
+.DS_Store
+.idea/
+.vscode/

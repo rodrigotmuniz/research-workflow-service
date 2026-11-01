@@ -3,6 +3,8 @@ name = "research-workflow-service"
 version = "0.1.0"
 description = "Define, run and track multi-step data automation flows for research datasets."
 readme = "README.md"
+license = "MIT"
+authors = [{ name = "Rodrigo Muniz" }]
 requires-python = ">=3.12,<3.13"
 dependencies = [
     "fastapi>=0.115",

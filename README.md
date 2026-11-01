@@ -1,16 +1,34 @@
 # Research Workflow Service
 
 [![CI](https://github.com/rodrigotmuniz/research-workflow-service/actions/workflows/ci.yml/badge.svg)](https://github.com/rodrigotmuniz/research-workflow-service/actions/workflows/ci.yml)
+![Python 3.12](https://img.shields.io/badge/python-3.12-blue)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
-A small backend for **data automation flows** on research datasets. A researcher defines
-a flow once (for example *validate a dataset in S3 → compute checksums → copy to an
-archive bucket → notify*), starts runs with different inputs, and tracks each run's
-status through a REST API or a CLI.
+A Python/FastAPI backend to define multi-step data automation flows for research datasets
+(validate in S3 → checksum → archive → notify), run them on AWS Step Functions + Lambda
+(or in-process locally), and track every run through a REST API or a CLI.
+
+**Status:** portfolio project, not deployed to production. Everything runs locally with
+Docker (PostgreSQL + LocalStack S3); the AWS template is a reference and CI only lints it.
+
+## Quickstart
+
+```bash
+docker compose up -d --build --wait   # PostgreSQL, LocalStack S3, migrations, API on :8000
+./scripts/smoke.sh                    # create a flow, start a run, wait for SUCCEEDED
+docker compose down -v
+```
+
+## What it does
+
+A researcher defines a flow once (for example *validate a dataset in S3 → compute
+checksums → copy to an archive bucket → notify*), starts runs with different inputs, and
+tracks each run's status.
 
 Runs are **asynchronous** (the API answers `202 Accepted` at once), **safe to retry**
 (idempotency keys, idempotent tasks), **secure** (OAuth2/OIDC bearer tokens, scopes,
-per-user ownership) and **observable** (structured JSON logs with request and run ids,
-health probes, a persisted run state machine).
+per-user ownership, SSRF-guarded webhooks) and **observable** (structured JSON logs with
+request and run ids, health probes, a persisted run state machine).
 
 ## Architecture
 
@@ -73,19 +91,16 @@ stateDiagram-v2
 
 ## Run it locally (no AWS account needed)
 
-Requires Docker and [uv](https://docs.astral.sh/uv/).
-
-```bash
-docker compose up -d --build --wait   # migrate, then API + PostgreSQL + LocalStack (S3 + demo data)
-./scripts/smoke.sh                    # create a flow, start a run, wait for SUCCEEDED
-docker compose down -v
-```
-
-The API is on http://localhost:8000 (interactive docs at `/docs`). For development:
+Requires Docker and [uv](https://docs.astral.sh/uv/). The Quickstart above starts the
+whole stack; the API is on http://localhost:8000 (interactive docs at `/docs`). The
+compose stack runs with `RWS_AUTH_MODE=dev`, so the API can mint its own tokens; that
+mode is local-only and never the default (see [ADR 4](docs/adr/0004-auth-model.md)).
+For development:
 
 ```bash
 uv sync                 # Python 3.12 + dependencies
 make lint test          # ruff, mypy, cfn-lint, pytest with coverage
+make run                # API on the host (:8001, SQLite, dev auth), S3 from `make up`
 ```
 
 ## API examples
@@ -202,13 +217,31 @@ Longer write-ups are in [`docs/adr/`](docs/adr).
 
 ## What I would do next
 
-- Push status updates instead of polling Step Functions on read: an EventBridge rule on
-  execution status changes → a small Lambda that applies the same `transition()`.
-- A reconciler for runs left `PENDING` without an idempotent retry from the client.
+Known gaps, roughly in priority order:
+
+- **Status sync in Step Functions mode is pull-based.** A run's status is refreshed from
+  Step Functions only when someone reads that run (`GET /runs/{id}`), so `GET /runs`
+  can show stale statuses. Next: an EventBridge rule on execution status changes → a
+  small Lambda that applies the same `transition()`.
+- **A sweeper for stuck `PENDING` runs.** A run whose start failed is relaunched only if
+  the client retries with the same `Idempotency-Key`; runs started without a key (or
+  abandoned) stay `PENDING`. Next: a periodic job that relaunches or fails runs that
+  have been `PENDING` for too long.
+- **Copy skip relies on ETags.** `copy_objects` skips objects whose size and ETag match,
+  but the ETag is not a content hash for SSE-KMS or multipart objects, so with the
+  template's KMS-encrypted buckets a retry copies everything again (safe, but wasteful).
+  Next: compare S3 additional checksums (SHA-256) instead.
+- **A timed-out Lambda keeps running** until its own 900-second limit, because Step
+  Functions stops waiting but does not stop the invocation. Tasks are idempotent, so this
+  costs money, not correctness.
+- **No load balancer or deploy pipeline.** The template has no ALB in front of the ECS
+  service. Next: an ALB with health checks on `/readyz`, SAM deploy from CI with OIDC
+  role assumption, the migration `run-task` before each service update, and alarms on
+  failed executions and API 5xx.
 - Per-step progress in the database (a `run_steps` table) and an execution-history endpoint.
 - Flow sharing and group-based roles on top of the ownership model.
-- Large objects: multipart checksums and copy verification with S3 additional checksums
-  instead of ETags.
-- Deployment pipeline (SAM deploy from CI with OIDC role assumption), alarms on failed
-  executions and API 5xx, and an ALB in front of the ECS service.
 - An SDK/CLI package published separately from the service.
+
+## License
+
+[MIT](LICENSE)
