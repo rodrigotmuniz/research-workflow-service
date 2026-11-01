@@ -16,7 +16,9 @@ The API depends on a small `Executor` protocol (`start`, `cancel`, `describe`) i
 - `StepFunctionsExecutor`: creates the flow's state machine, starts/stops executions and
   maps execution status to run status (read on `GET /runs/{id}`).
 - `LocalExecutor`: runs the same task handlers in a thread pool, with the same run
-  document, `$.` reference semantics and retry policy, and writes status to the database.
+  document, `$.` reference semantics, retry policy and per-attempt step timeout, and
+  writes status to the database. Like Step Functions, a timed-out step is abandoned, not
+  killed (Python cannot kill a thread); its late result is dropped.
 
 Docker compose runs the API in local mode against PostgreSQL and LocalStack S3.
 

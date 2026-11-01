@@ -7,6 +7,7 @@ locally and on AWS. Status is written straight to the database.
 
 from __future__ import annotations
 
+import contextvars
 import logging
 import threading
 import time
@@ -22,10 +23,34 @@ from rws.executors.base import RemoteStatus, RunRequest, StartResult
 from rws.logging import run_id_var
 from rws.models import RunStatus
 from rws.runs import set_fields, transition
+from rws.tasks.errors import TaskError
 from rws.tasks.handlers import ACTIONS, Action
 from rws.tasks.retry import call_with_retry
 
 log = logging.getLogger(__name__)
+
+
+class StepTimeout(TaskError):
+    """The step ran longer than its ``timeout_seconds`` (ASL ``States.Timeout``). Not retried."""
+
+
+def call_with_timeout[T](fn: Callable[[], T], seconds: float) -> T:
+    """Run ``fn`` in its own thread and stop waiting for it after ``seconds``.
+
+    Python cannot kill a thread, so a timed-out call keeps running in the background
+    and its result is dropped. That is the same as Step Functions, which stops waiting
+    for a Lambda but does not stop it; tasks are idempotent, so a late finish is harmless.
+    """
+    pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="step")
+    future = pool.submit(contextvars.copy_context().run, fn)  # keep run_id in logs
+    try:
+        return future.result(timeout=seconds)
+    except TimeoutError:
+        if future.done():  # fn itself raised TimeoutError (e.g. a socket timeout)
+            raise
+        raise StepTimeout(f"timed out after {seconds:g}s") from None
+    finally:
+        pool.shutdown(wait=False)
 
 
 def resolve_refs(value: Any, document: Mapping[str, Any]) -> Any:
@@ -120,7 +145,7 @@ class LocalExecutor:
                 params = resolve_refs(step.params.model_dump(exclude_none=True), document)
                 event = {"run_id": str(run_id), "step_id": step.id, "params": params}
                 result = call_with_retry(
-                    partial(action, event),
+                    partial(call_with_timeout, partial(action, event), step.timeout_seconds),
                     step.retry,
                     sleep=self._sleep,
                     on_retry=partial(self._record_retry, run_id),

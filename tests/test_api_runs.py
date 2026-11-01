@@ -100,6 +100,49 @@ def test_transient_errors_are_retried(
     assert calls["n"] == 3
 
 
+def test_step_timeout_fails_the_run(
+    app: FastAPI, client: TestClient, auth: AuthHeaders, example_flow: dict[str, Any], s3: Any
+) -> None:
+    import threading
+
+    from rws.tasks import handlers
+
+    release = threading.Event()
+
+    def stuck_validate(event: dict[str, Any]) -> dict[str, Any]:
+        release.wait(10)
+        return {}
+
+    app.state.executor = LocalExecutor(
+        app.state.session_factory,
+        actions={**handlers.ACTIONS, "validate_dataset": stuck_validate},
+        sleep=lambda _: None,
+    )
+    example_flow["definition"]["steps"][0]["timeout_seconds"] = 1
+    flow = client.post("/flows", json=example_flow, headers=auth()).json()
+    run_id = start(client, auth, flow["id"]).json()["id"]
+    wait(app, run_id)
+    release.set()
+    run = client.get(f"/runs/{run_id}", headers=auth()).json()
+
+    assert run["status"] == "FAILED"
+    assert run["error"] == "validate: StepTimeout: timed out after 1s"
+    assert run["attempts"] == 1  # timeouts are not retried
+
+
+def test_call_with_timeout_returns_and_propagates_errors() -> None:
+    from rws.executors.local import call_with_timeout
+
+    assert call_with_timeout(lambda: 42, 1) == 42
+
+    def socket_timeout() -> None:
+        raise TimeoutError("read timed out")
+
+    # The function's own TimeoutError is not mistaken for a step timeout.
+    with pytest.raises(TimeoutError, match="read timed out"):
+        call_with_timeout(socket_timeout, 1)
+
+
 def test_idempotency_key_returns_the_same_run(
     app: FastAPI, client: TestClient, auth: AuthHeaders, flow_id: str, s3: Any
 ) -> None:
