@@ -92,7 +92,7 @@ make lint test          # ruff, mypy, cfn-lint, pytest with coverage
 
 ```bash
 API=http://localhost:8000
-# Local mode only: the API issues dev tokens. In AWS mode tokens come from your OIDC provider.
+# Dev tokens exist only when the API runs with RWS_AUTH_MODE=dev (docker compose sets it).
 TOKEN=$(curl -s -X POST $API/dev/token -H 'Content-Type: application/json' \
   -d '{"subject": "alice"}' | python3 -c 'import json,sys; print(json.load(sys.stdin)["access_token"])')
 
@@ -171,8 +171,12 @@ Longer write-ups are in [`docs/adr/`](docs/adr).
 - **Auth model** ([ADR 4](docs/adr/0004-auth-model.md)). Resource server only: RS256 JWTs
   verified against the provider's JWKS, with issuer, audience and expiry checks; scopes
   per endpoint (`flows:read`, `flows:write`, `runs:start`); every query is filtered by
-  the token subject, and other users' resources return `404`, not `403`. Local mode
-  generates an in-memory key pair at startup; no keys are stored in the repo.
+  the token subject, and other users' resources return `404`, not `403`. The default
+  auth mode is `jwks` (external OIDC provider); without `RWS_AUTH_JWKS_URL` the API
+  refuses to start. Dev mode (`RWS_AUTH_MODE=dev`, set by docker compose and `make run`)
+  generates an in-memory key pair and mounts `POST /dev/token`, which mints a token for
+  any subject: it is for local use only, and the API refuses to start with it when
+  `RWS_ENV=production`. No keys are stored in the repo.
 - **Keyset pagination** on `(created_at, id)` with an opaque cursor: stable while new runs
   are inserted, and served by a composite index.
 - **Published contract.** `openapi.json` is generated from the app and committed; CI fails

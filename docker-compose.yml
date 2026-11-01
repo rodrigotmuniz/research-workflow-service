@@ -29,7 +29,7 @@ services:
     environment:
       RWS_DATABASE_URL: postgresql+psycopg://rws:rws-local-only@postgres:5432/rws
       RWS_EXECUTOR: local
-      RWS_AUTH_MODE: dev
+      RWS_AUTH_MODE: dev  # local only: the API mints its own tokens (POST /dev/token)
       RWS_LOG_JSON: "true"
       AWS_ENDPOINT_URL: http://localstack:4566
       AWS_ACCESS_KEY_ID: test

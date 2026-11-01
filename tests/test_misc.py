@@ -147,13 +147,27 @@ def test_configure_logging_plain_text() -> None:
 @pytest.mark.parametrize(
     ("kwargs", "message"),
     [
+        ({}, "RWS_AUTH_JWKS_URL"),  # the default is the safe mode: an external OIDC provider
         ({"auth_mode": "jwks"}, "RWS_AUTH_JWKS_URL"),
-        ({"executor": "stepfunctions"}, "RWS_SFN_ROLE_ARN"),
+        ({"auth_mode": "dev", "env": "production"}, "not allowed when RWS_ENV=production"),
+        ({"auth_mode": "dev", "executor": "stepfunctions"}, "RWS_SFN_ROLE_ARN"),
     ],
 )
-def test_settings_validation(kwargs: dict[str, Any], message: str) -> None:
+def test_settings_validation(
+    monkeypatch: pytest.MonkeyPatch, kwargs: dict[str, Any], message: str
+) -> None:
+    for name in ("RWS_AUTH_MODE", "RWS_AUTH_JWKS_URL", "RWS_ENV", "RWS_EXECUTOR"):
+        monkeypatch.delenv(name, raising=False)
     with pytest.raises(ValidationError, match=message):
         Settings(**kwargs)
+
+
+def test_dev_auth_mode_from_environment(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("RWS_AUTH_MODE", "dev")
+    assert Settings().auth_mode == "dev"
+    monkeypatch.setenv("RWS_ENV", "production")
+    with pytest.raises(ValidationError, match="not allowed"):
+        Settings()
 
 
 def test_production_settings_build_the_aws_wiring(monkeypatch: pytest.MonkeyPatch) -> None:

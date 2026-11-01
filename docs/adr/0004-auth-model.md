@@ -18,10 +18,14 @@ flows and runs private.
   `WWW-Authenticate: Bearer error="insufficient_scope"`.
 - **Ownership**: the token subject owns what it creates; every query filters by it, and
   other users' resources return `404` so ids cannot be probed.
-- **Local development**: with `RWS_AUTH_MODE=dev` the API generates an RSA key pair in
-  memory at startup, exposes `POST /dev/token` (hidden from the schema) and verifies its
-  own tokens through the same code path. Production settings (`RWS_AUTH_MODE=jwks`)
-  require a JWKS URL and do not mount the dev routes.
+- **Safe default**: `RWS_AUTH_MODE` defaults to `jwks`, which requires a JWKS URL and
+  does not mount the dev routes. A container started without auth settings fails to
+  start instead of serving an open token endpoint.
+- **Local development**: only with an explicit `RWS_AUTH_MODE=dev` (docker compose,
+  `make run`, tests) the API generates an RSA key pair in memory at startup, exposes
+  `POST /dev/token` (hidden from the schema) and verifies its own tokens through the
+  same code path. `RWS_ENV=production` (set in the ECS task definition) makes dev mode a
+  startup error, so a copied local config cannot open production.
 
 ## Consequences
 

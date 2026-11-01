@@ -201,6 +201,7 @@ Resources:
           PortMappings:
             - ContainerPort: 8000
           Environment:
+            - { Name: RWS_ENV, Value: production }
             - { Name: RWS_EXECUTOR, Value: stepfunctions }
             - { Name: RWS_AUTH_MODE, Value: jwks }
             - { Name: RWS_AUTH_ISSUER, Value: !Ref OidcIssuer }

@@ -15,7 +15,13 @@ from rws.config import Settings
 
 
 def build_schema() -> dict[str, Any]:
-    app = create_app(Settings(database_url="sqlite://", log_json=False, log_level="ERROR"))
+    settings = Settings(
+        database_url="sqlite://",
+        log_json=False,
+        log_level="ERROR",
+        auth_jwks_url="https://idp.example/.well-known/jwks.json",  # never fetched here
+    )
+    app = create_app(settings)
     return app.openapi()
 
 

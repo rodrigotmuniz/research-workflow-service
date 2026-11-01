@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
+import os
 from logging.config import fileConfig
 
 from alembic import context
 
-from rws.config import get_settings
+from rws.config import Settings
 from rws.db import Base, make_engine
 from rws.models import Flow, Run  # noqa: F401 - register tables on the metadata
 
@@ -17,7 +18,12 @@ target_metadata = Base.metadata
 
 
 def run_migrations() -> None:
-    url = context.config.attributes.get("database_url") or get_settings().database_url
+    # Only the database URL is needed, so migrations run without the API's auth settings.
+    url = (
+        context.config.attributes.get("database_url")
+        or os.environ.get("RWS_DATABASE_URL")
+        or Settings.model_fields["database_url"].default
+    )
     if context.is_offline_mode():
         context.configure(url=url, target_metadata=target_metadata, literal_binds=True)
         with context.begin_transaction():

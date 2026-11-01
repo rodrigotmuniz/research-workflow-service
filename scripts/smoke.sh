@@ -16,8 +16,12 @@ done
 curl -fsS "$API/readyz" >/dev/null
 
 echo "==> getting a dev token"
-TOKEN=$(curl -fsS -X POST "$API/dev/token" -H 'Content-Type: application/json' \
-  -d '{"subject": "smoke-user"}' | json_field '["access_token"]')
+TOKEN_JSON=$(curl -fsS -X POST "$API/dev/token" -H 'Content-Type: application/json' \
+  -d '{"subject": "smoke-user"}') || {
+  echo "FAIL: no /dev/token. Start the API with RWS_AUTH_MODE=dev (docker compose does)."
+  exit 1
+}
+TOKEN=$(json_field '["access_token"]' <<<"$TOKEN_JSON")
 AUTH=(-H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json')
 
 echo "==> creating flow"

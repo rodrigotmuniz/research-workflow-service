@@ -21,11 +21,13 @@ class Settings(BaseSettings):
     database_url: str = "sqlite:///./rws.db"
     log_level: str = "INFO"
     log_json: bool = True
+    # Deployment marker. "production" refuses unsafe settings such as dev auth.
+    env: Literal["development", "production"] = "development"
 
     # --- Auth -------------------------------------------------------------------
-    # "dev": the API mints and trusts its own short-lived tokens (local only).
-    # "jwks": tokens come from an external OpenID Connect provider.
-    auth_mode: Literal["dev", "jwks"] = "dev"
+    # "jwks" (default): tokens come from an external OpenID Connect provider.
+    # "dev": the API mints and trusts its own tokens. Local only; must be set explicitly.
+    auth_mode: Literal["dev", "jwks"] = "jwks"
     auth_issuer: str = "http://localhost:8000/dev"
     auth_audience: str = "research-workflow-service"
     auth_jwks_url: str | None = None
@@ -43,6 +45,8 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def _check_consistency(self) -> Settings:
+        if self.auth_mode == "dev" and self.env == "production":
+            raise ValueError("RWS_AUTH_MODE=dev is not allowed when RWS_ENV=production")
         if self.auth_mode == "jwks" and not self.auth_jwks_url:
             raise ValueError("RWS_AUTH_JWKS_URL is required when RWS_AUTH_MODE=jwks")
         if self.executor == "stepfunctions" and not self.sfn_role_arn:
