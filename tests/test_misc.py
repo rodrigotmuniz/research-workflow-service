@@ -15,7 +15,8 @@ from alembic.migration import MigrationContext
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
 
 from rws import __version__
@@ -204,7 +205,28 @@ def test_migrations_match_the_models(tmp_path: Path) -> None:
     with engine.connect() as conn:
         diff = compare_metadata(MigrationContext.configure(conn), Base.metadata)
     assert diff == []
+
+    # Migration 0002: the database itself rejects an unknown run status.
+    with engine.begin() as conn:
+        conn.execute(
+            text("INSERT INTO flows VALUES ('f1', 'a', 'f', '', '{}', NULL, '2026-01-01')")
+        )
+        insert_run = (
+            "INSERT INTO runs (id, flow_id, owner_id, status, input, attempts, created_at,"
+            " updated_at) VALUES (:id, 'f1', 'a', :status, '{}', 0, '2026-01-01', '2026-01-01')"
+        )
+        conn.execute(text(insert_run), {"id": "r1", "status": "RUNNING"})
+    with pytest.raises(IntegrityError, match="ck_runs_status"), engine.begin() as conn:
+        conn.execute(text(insert_run), {"id": "r2", "status": "PAUSED"})
+    engine.dispose()
     command.downgrade(config, "base")
+
+
+def test_models_reject_unknown_status(
+    session_factory: sessionmaker[Session], run_id: uuid.UUID
+) -> None:
+    with session_factory() as session, pytest.raises(IntegrityError):
+        session.execute(update(Run).where(Run.id == run_id).values(status="PAUSED"))
 
 
 def test_committed_openapi_is_up_to_date() -> None:

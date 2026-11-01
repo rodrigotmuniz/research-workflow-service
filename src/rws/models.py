@@ -7,7 +7,17 @@ from datetime import datetime
 from enum import StrEnum
 from typing import Any
 
-from sqlalchemy import JSON, ForeignKey, Index, Integer, String, Text, UniqueConstraint, Uuid
+from sqlalchemy import (
+    JSON,
+    CheckConstraint,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+    Uuid,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from rws.db import Base, UTCDateTime, utcnow
@@ -89,4 +99,8 @@ class Run(Base):
     __table_args__ = (
         UniqueConstraint("owner_id", "idempotency_key", name="uq_runs_owner_idempotency_key"),
         Index("ix_runs_owner_created", "owner_id", "created_at", "id"),
+        # The database rejects unknown statuses even if a bug or a manual UPDATE tries one.
+        CheckConstraint(
+            f"status IN ({', '.join(repr(s.value) for s in RunStatus)})", name="ck_runs_status"
+        ),
     )
