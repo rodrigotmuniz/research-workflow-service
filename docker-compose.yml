@@ -1,4 +1,17 @@
 # Local stack: API + PostgreSQL + LocalStack (S3). No AWS account needed.
+x-app: &app
+  build: .
+  image: research-workflow-service:local
+  environment:
+    RWS_DATABASE_URL: postgresql+psycopg://rws:rws-local-only@postgres:5432/rws
+    RWS_EXECUTOR: local
+    RWS_AUTH_MODE: dev  # local only: the API mints its own tokens (POST /dev/token)
+    RWS_LOG_JSON: "true"
+    AWS_ENDPOINT_URL: http://localstack:4566
+    AWS_ACCESS_KEY_ID: test
+    AWS_SECRET_ACCESS_KEY: test
+    AWS_DEFAULT_REGION: us-east-1
+
 services:
   postgres:
     image: postgres:16-alpine
@@ -24,18 +37,16 @@ services:
       interval: 3s
       retries: 30
 
-  api:
-    build: .
-    environment:
-      RWS_DATABASE_URL: postgresql+psycopg://rws:rws-local-only@postgres:5432/rws
-      RWS_EXECUTOR: local
-      RWS_AUTH_MODE: dev  # local only: the API mints its own tokens (POST /dev/token)
-      RWS_LOG_JSON: "true"
-      AWS_ENDPOINT_URL: http://localstack:4566
-      AWS_ACCESS_KEY_ID: test
-      AWS_SECRET_ACCESS_KEY: test
-      AWS_DEFAULT_REGION: us-east-1
-    ports: ["8000:8000"]
+  # One-off: apply migrations, then exit. The API waits for it to succeed.
+  migrate:
+    <<: *app
+    command: ["alembic", "upgrade", "head"]
     depends_on:
       postgres: { condition: service_healthy }
+
+  api:
+    <<: *app
+    ports: ["8000:8000"]
+    depends_on:
+      migrate: { condition: service_completed_successfully }
       localstack: { condition: service_healthy }

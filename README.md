@@ -67,7 +67,7 @@ stateDiagram-v2
 | `src/rws/auth.py` | JWT validation (RS256 + JWKS), scopes, local dev issuer |
 | `src/rws/api/` | FastAPI app factory, routes, dependencies, schemas |
 | `src/rws/client/`, `src/rws/cli.py` | Typed client generated from `openapi.json`, and the `rws` CLI |
-| `migrations/` | Alembic migrations (PostgreSQL in Docker, SQLite in quick tests) |
+| `migrations/` | Alembic migrations, run once per release (PostgreSQL in Docker, SQLite in tests) |
 | `infra/` | SAM/CloudFormation template (S3, Lambda, Step Functions, IAM, ECS) and compiled ASL |
 | `docs/adr/` | Architecture decision records |
 
@@ -76,7 +76,7 @@ stateDiagram-v2
 Requires Docker and [uv](https://docs.astral.sh/uv/).
 
 ```bash
-docker compose up -d --build --wait   # API + PostgreSQL + LocalStack (S3, with a demo dataset)
+docker compose up -d --build --wait   # migrate, then API + PostgreSQL + LocalStack (S3 + demo data)
 ./scripts/smoke.sh                    # create a flow, start a run, wait for SUCCEEDED
 docker compose down -v
 ```
@@ -190,6 +190,10 @@ Longer write-ups are in [`docs/adr/`](docs/adr).
   generates an in-memory key pair and mounts `POST /dev/token`, which mints a token for
   any subject: it is for local use only, and the API refuses to start with it when
   `RWS_ENV=production`. No keys are stored in the repo.
+- **Migrations are a release step** ([ADR 5](docs/adr/0005-migrations-as-a-release-step.md)).
+  The API container does not migrate on start, since several replicas would race. The
+  same image runs `alembic upgrade head` once per release: the `migrate` service in
+  docker compose, an ECS `run-task` with a command override in AWS.
 - **Keyset pagination** on `(created_at, id)` with an opaque cursor: stable while new runs
   are inserted, and served by a composite index.
 - **Published contract.** `openapi.json` is generated from the app and committed; CI fails

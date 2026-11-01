@@ -31,7 +31,7 @@ jobs:
       - name: CloudFormation / SAM template
         run: uv run cfn-lint infra/template.yaml
       - name: shellcheck
-        run: shellcheck scripts/*.sh docker/*.sh docker/localstack/*.sh
+        run: shellcheck scripts/*.sh docker/localstack/*.sh
       - name: OpenAPI schema and generated client are up to date
         run: |
           ./scripts/generate-client.sh

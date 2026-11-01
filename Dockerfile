@@ -16,11 +16,11 @@ COPY --from=build /app/.venv /app/.venv
 COPY --from=build /app/src /app/src
 COPY alembic.ini ./
 COPY migrations ./migrations
-COPY docker/entrypoint.sh /entrypoint.sh
 ENV PATH="/app/.venv/bin:$PATH" PYTHONUNBUFFERED=1
 USER app
 EXPOSE 8000
 HEALTHCHECK --interval=10s --timeout=3s --retries=5 \
   CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/healthz')"
-ENTRYPOINT ["/entrypoint.sh"]
+# The API does not migrate on start: with several replicas that would run concurrent
+# upgrades. Run `alembic upgrade head` once per release with this same image instead.
 CMD ["uvicorn", "rws.api.app:create_app", "--factory", "--host", "0.0.0.0", "--port", "8000"]
