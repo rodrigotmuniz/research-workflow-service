@@ -8,6 +8,7 @@ from typing import Any
 
 import boto3
 import pytest
+from botocore.stub import Stubber
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from moto import mock_aws
@@ -70,6 +71,23 @@ def test_start_is_idempotent_per_run_id(sfn: Any, example_flow: dict[str, Any]) 
     assert again.execution_ref == first.execution_ref
     executions = sfn.list_executions(stateMachineArn=first.state_machine_arn)["executions"]
     assert len(executions) == 1
+
+
+def test_start_when_execution_already_exists(sfn: Any, example_flow: dict[str, Any]) -> None:
+    """A retry after the execution finished: AWS refuses a second one with that name."""
+    sm_arn = "arn:aws:states:us-east-1:123456789012:stateMachine:rws-flow-x"
+    req = request(example_flow, sm_arn=sm_arn)
+    with Stubber(sfn) as stub:
+        stub.add_client_error(
+            "start_execution", service_error_code="ExecutionAlreadyExists", http_status_code=400
+        )
+        result = StepFunctionsExecutor(sfn, ROLE, ARNS).start(req)
+        stub.assert_no_pending_responses()
+    # The existing execution is referenced by its deterministic ARN (name = run id).
+    assert result.execution_ref == (
+        f"arn:aws:states:us-east-1:123456789012:execution:rws-flow-x:{req.run_id}"
+    )
+    assert result.state_machine_arn == sm_arn
 
 
 def test_cancel_stops_execution(sfn: Any, example_flow: dict[str, Any]) -> None:

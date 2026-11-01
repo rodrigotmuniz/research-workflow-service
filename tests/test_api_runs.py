@@ -156,6 +156,40 @@ def test_idempotency_key_returns_the_same_run(
     assert len(client.get("/runs", headers=auth()).json()["items"]) == 1
 
 
+def test_concurrent_start_with_same_key_replays_the_winner(
+    app: FastAPI,
+    client: TestClient,
+    auth: AuthHeaders,
+    flow_id: str,
+    s3: Any,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Two requests with one key race: both look the key up before either inserts.
+
+    The unique constraint makes the loser's INSERT fail; it must then return the
+    winner's run (200), not a 500 and not a second run.
+    """
+    from rws import runs
+
+    winner = start(client, auth, flow_id, key="race")
+    wait(app, winner.json()["id"])
+
+    real_find = runs._find_by_key
+    lookups: list[str] = []
+
+    def stale_first_lookup(session: Any, owner_id: str, key: str) -> Any:
+        lookups.append(key)  # the first lookup ran before the winner committed
+        return None if len(lookups) == 1 else real_find(session, owner_id, key)
+
+    monkeypatch.setattr(runs, "_find_by_key", stale_first_lookup)
+    loser = start(client, auth, flow_id, key="race")
+
+    assert loser.status_code == 200
+    assert loser.json()["id"] == winner.json()["id"]
+    assert lookups == ["race", "race"]  # lookup, failed insert, lookup again
+    assert len(client.get("/runs", headers=auth()).json()["items"]) == 1
+
+
 def test_idempotency_key_with_different_body_is_409(
     client: TestClient, auth: AuthHeaders, flow_id: str, s3: Any
 ) -> None:
